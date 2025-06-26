@@ -6,28 +6,28 @@ A feature-rich, desktop application for tracking character progression in tablet
 🚀 Key Features
 This application is packed with features designed for a seamless and comprehensive tracking experience:
 👑 Character & System Management
-•	Multi-Character Support: Manage multiple character profiles within a single session.
-•	Dynamic Theming: Instantly switch between a sleek Dark Mode and a clean Light Mode.
-•	Data Persistence: All characters and settings are automatically saved on close and reloaded on start.
-•	Markdown Export: Export a complete, beautifully formatted character sheet to a .md or .txt file for printing or sharing.
+Multi-Character Support: Manage multiple character profiles within a single session.
+Dynamic Theming: Instantly switch between a sleek Dark Mode and a clean Light Mode.
+Data Persistence: All characters and settings are automatically saved on close and reloaded on start.
+Markdown Export: Export a complete, beautifully formatted character sheet to a .md or .txt file for printing or sharing.
 📊 Status & Attributes
-•	Core Stats: Track level, health, mana, and experience points.
-•	Interactive EXP Bars: Visual progress bars for both main level and individual skills show percentage and current/max values.
-•	Dynamic Attribute System: Edit base attributes (Strength, Dexterity, etc.) and see the total values and modifiers update in real-time based on equipped items.
+Core Stats: Track level, health, mana, and experience points.
+Interactive EXP Bars: Visual progress bars for both main level and individual skills show percentage and current/max values.
+Dynamic Attribute System: Edit base attributes (Strength, Dexterity, etc.) and see the total values and modifiers update in real-time based on equipped items.
 ⚔️ Skills
-•	Live Search & Filter: Instantly find skills by name as you type.
-•	Click-to-Sort Columns: Sort the skill list by name, level, or EXP with a single click.
-•	Detailed EXP Management: Add or remove experience from any skill and watch it level up (or down) automatically.
+Live Search & Filter: Instantly find skills by name as you type.
+Click-to-Sort Columns: Sort the skill list by name, level, or EXP with a single click.
+Detailed EXP Management: Add or remove experience from any skill and watch it level up (or down) automatically.
 🎒 Inventory & Equipment
-•	Paned View: A resizable split view for a clear overview of equipped items and general inventory.
-•	Dynamic Equipment Logic: Equipping an item automatically updates character attributes. The system correctly handles unique slots and dual slots (e.g., rings).
-•	Interactive Item Details: Click any item in your inventory or equipment list to see its description.
-•	Advanced Item Editor: Create and edit items with custom names, descriptions, quantities, types, and attribute-modifying effects.
+Paned View: A resizable split view for a clear overview of equipped items and general inventory.
+Dynamic Equipment Logic: Equipping an item automatically updates character attributes. The system correctly handles unique slots and dual slots (e.g., rings).
+Interactive Item Details: Click any item in your inventory or equipment list to see its description.
+Advanced Item Editor: Create and edit items with custom names, descriptions, quantities, types, and attribute-modifying effects.
 ✨ Polished User Experience
-•	Context Menus: Right-click on skills or items for quick access to actions like "Edit," "Delete," and "Equip," keeping the UI clean.
-•	Animated Dialogs: All pop-up windows fade in and out smoothly for a modern feel.
-•	Helpful Tooltips: Hover over buttons to see a description of what they do.
-•	Custom Smooth Scrolling: A custom-implemented, eased-out smooth scroll enhances the Notes tab.
+Context Menus: Right-click on skills or items for quick access to actions like "Edit," "Delete," and "Equip," keeping the UI clean.
+Animated Dialogs: All pop-up windows fade in and out smoothly for a modern feel.
+Helpful Tooltips: Hover over buttons to see a description of what they do.
+Custom Smooth Scrolling: A custom-implemented, eased-out smooth scroll enhances the Notes tab.
 ________________________________________
 🛠️ Technology Stack
 •	Language: Python 3
