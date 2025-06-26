@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, filedialog
 import json
 import os
 
@@ -272,6 +272,13 @@ class CharacterTracker:
         self.skill_exp_label_var = tk.StringVar(value="Select a skill to see progress")
         self.skill_exp_progress_label_var = tk.StringVar()
 
+        # --- Sort State ---
+        self.skill_sort_column = "Skill Name"
+        self.skill_sort_reverse = False
+        self.inventory_sort_column = "Item Name"
+        self.inventory_sort_reverse = False
+
+
         self._apply_styles()
         self._setup_ui()
         self._update_all_views()
@@ -350,6 +357,10 @@ class CharacterTracker:
         delete_btn.pack(side="left", padx=5)
         self.tooltips.append(ToolTip(delete_btn, "Delete the current character.", self.theme))
 
+        export_btn = ttk.Button(frame, text="Export", command=self._export_character)
+        export_btn.pack(side="left", padx=5)
+        self.tooltips.append(ToolTip(export_btn, "Export the current character sheet to a text file.", self.theme))
+
         self.theme_button = ttk.Button(frame, text="Toggle Theme", command=self._toggle_theme)
         self.theme_button.pack(side="right")
         self.tooltips.append(ToolTip(self.theme_button, "Switch between light and dark themes.", self.theme))
@@ -405,7 +416,7 @@ class CharacterTracker:
         progress_bar.pack(fill='x')
 
         # Overlay label on the progress bar
-        progress_label = ttk.Label(progress_frame, textvariable=self.exp_progress_label_var, background=self.theme["BACKGROUND"], foreground=self.theme["FOREGROUND"], font=Themes.FONT_BOLD)
+        progress_label = ttk.Label(progress_frame, textvariable=self.exp_progress_label_var, background=self.theme["ACCENT_COLOR"], foreground=Themes.light["WIDGET_FG"], font=Themes.FONT_BOLD)
         progress_label.place(relx=0.5, rely=0.5, anchor="center")
 
     def _create_status_exp_controls(self, parent_tab):
@@ -488,10 +499,11 @@ class CharacterTracker:
         tree_frame.pack(fill="both", expand=True)
         columns = ("#1", "#2", "#3", "#4")
         self.skill_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=12)
-        self.skill_tree.heading("#1", text="Skill Name")
-        self.skill_tree.heading("#2", text="Level")
-        self.skill_tree.heading("#3", text="Current EXP")
-        self.skill_tree.heading("#4", text="EXP to Next")
+        
+        headings = {"#1": "Skill Name", "#2": "Level", "#3": "Current EXP", "#4": "EXP to Next"}
+        for col, text in headings.items():
+            self.skill_tree.heading(col, text=text, command=lambda c=text: self._sort_skills_column(c))
+
         self.skill_tree.column("#1", width=250, anchor="w")
         self.skill_tree.column("#2", width=100, anchor="center")
         self.skill_tree.column("#3", width=120, anchor="center")
@@ -536,9 +548,8 @@ class CharacterTracker:
         bar_container.pack(fill='x', pady=(5,0), expand=True)
         ttk.Progressbar(bar_container, variable=self.skill_exp_progress_var, style="green.Horizontal.TProgressbar").pack(fill='x', expand=True)
 
-        skill_progress_label = ttk.Label(bar_container, textvariable=self.skill_exp_progress_label_var, background=self.theme["BACKGROUND"], foreground=self.theme["FOREGROUND"], font=Themes.FONT_NORMAL)
+        skill_progress_label = ttk.Label(bar_container, textvariable=self.skill_exp_progress_label_var, background=self.theme["ACCENT_COLOR"], foreground=Themes.light["WIDGET_FG"], font=Themes.FONT_NORMAL)
         skill_progress_label.place(relx=0.5, rely=0.5, anchor="center")
-
         vcmd = (self.root.register(self._validate_integer_input), '%P')
         ttk.Label(exp_frame, text="Amount:").pack(side="left", padx=5)
         ttk.Entry(exp_frame, textvariable=self.skill_exp_gain, width=15, validate='key', validatecommand=vcmd).pack(side="left", padx=5, expand=True, fill="x")
@@ -593,9 +604,11 @@ class CharacterTracker:
 
         inv_cols = ("#1", "#2", "#3")
         self.inv_tree = ttk.Treeview(inv_frame, columns=inv_cols, show="headings", height=15)
-        self.inv_tree.heading("#1", text="Item Name")
-        self.inv_tree.heading("#2", text="Type")
-        self.inv_tree.heading("#3", text="Qty")
+
+        headings = {"#1": "Item Name", "#2": "Type", "#3": "Qty"}
+        for col, text in headings.items():
+            self.inv_tree.heading(col, text=text, command=lambda c=text: self._sort_inventory_column(c))
+
         self.inv_tree.column("#1", width=200, anchor="w")
         self.inv_tree.column("#2", width=100, anchor="w")
         self.inv_tree.column("#3", width=50, anchor="center")
@@ -699,6 +712,16 @@ class CharacterTracker:
             self.attribute_modifier_vars[attr].set(f"{modifier:+}") # Show + for positive
 
     def _update_skills_view(self):
+        # Add sort indicators to headers
+        headings = {"#1": "Skill Name", "#2": "Level", "#3": "Current EXP", "#4": "EXP to Next"}
+        arrow = ' \u25BC' if self.skill_sort_reverse else ' \u25B2'
+        for col_id, text in headings.items():
+            # Update header text with sort indicator
+            if text == self.skill_sort_column:
+                self.skill_tree.heading(col_id, text=text + arrow)
+            else:
+                self.skill_tree.heading(col_id, text=text)
+
         self.skill_tree.tag_configure('oddrow', background=self.theme["TREEVIEW_ODD"], foreground=self.theme["WIDGET_FG"])
         self.skill_tree.tag_configure('evenrow', background=self.theme["TREEVIEW_EVEN"], foreground=self.theme["WIDGET_FG"])
         for i in self.skill_tree.get_children():
@@ -711,6 +734,18 @@ class CharacterTracker:
             (i, skill) for i, skill in enumerate(self.current_character.skills)
             if search_term in skill['name'].lower()
         ]
+
+        # --- Sorting Logic ---
+        sort_key_map = {
+            "Skill Name": lambda item: item[1]['name'].lower(),
+            "Level": lambda item: item[1]['level'],
+            "Current EXP": lambda item: item[1]['exp'],
+            "EXP to Next": lambda item: self.current_character.get_exp_for_next_level(item[1]['level'])
+        }
+        sort_key = sort_key_map.get(self.skill_sort_column)
+        if sort_key:
+            # Sort the list of (original_index, skill_dict) tuples
+            filtered_skills.sort(key=sort_key, reverse=self.skill_sort_reverse)
 
         for i, (original_index, skill) in enumerate(filtered_skills):
             next_exp = self.current_character.get_exp_for_next_level(skill['level'])
@@ -727,6 +762,16 @@ class CharacterTracker:
             item_name = item.name if item else "-"
             self.equip_tree.insert("", "end", values=(slot, item_name))
 
+        # Add sort indicators to headers
+        headings = {"#1": "Item Name", "#2": "Type", "#3": "Qty"}
+        arrow = ' \u25BC' if self.inventory_sort_reverse else ' \u25B2'
+        for col_id, text in headings.items():
+            # Update header text with sort indicator
+            if text == self.inventory_sort_column:
+                self.inv_tree.heading(col_id, text=text + arrow)
+            else:
+                self.inv_tree.heading(col_id, text=text)
+
         # Inventory view is filtered
         for i in self.inv_tree.get_children():
             self.inv_tree.delete(i)
@@ -737,6 +782,17 @@ class CharacterTracker:
             (i, item) for i, item in enumerate(self.current_character.inventory)
             if search_term in item.name.lower()
         ]
+
+        # --- Sorting Logic ---
+        sort_key_map = {
+            "Item Name": lambda item: item[1].name.lower(),
+            "Type": lambda item: item[1].item_type.lower(),
+            "Qty": lambda item: item[1].quantity
+        }
+        sort_key = sort_key_map.get(self.inventory_sort_column)
+        if sort_key:
+            # Sort the list of (original_index, item_obj) tuples
+            filtered_inventory.sort(key=sort_key, reverse=self.inventory_sort_reverse)
 
         for i, (original_index, item) in enumerate(filtered_inventory):
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
@@ -874,13 +930,24 @@ class CharacterTracker:
         self.skill_exp_label_var.set("Select a skill to see progress")
         self.skill_exp_progress_label_var.set("")
 
-    def _on_character_select(self, event):
-        new_name = self.character_selector_var.get()
-        if new_name and new_name != self.active_character_name:
-            self._sync_ui_to_character()
-            self.active_character_name = new_name
-            self._update_all_views()
+    def _sort_skills_column(self, col):
+        """Handles sorting of the skills treeview when a column header is clicked."""
+        if self.skill_sort_column == col:
+            self.skill_sort_reverse = not self.skill_sort_reverse
+        else:
+            self.skill_sort_column = col
+            self.skill_sort_reverse = False
+        self._update_skills_view()
 
+    def _sort_inventory_column(self, col):
+        """Handles sorting of the inventory treeview when a column header is clicked."""
+        if self.inventory_sort_column == col:
+            self.inventory_sort_reverse = not self.inventory_sort_reverse
+        else:
+            self.inventory_sort_column = col
+            self.inventory_sort_reverse = False
+        self._update_inventory_views()
+        
     def _on_skill_search(self, *args):
         self._update_skills_view()
 
@@ -924,6 +991,84 @@ class CharacterTracker:
             del self.characters[char_to_delete]
             self.active_character_name = list(self.characters.keys())[0]
             self._update_all_views()
+
+    def _export_character(self):
+        if not self.current_character:
+            return
+
+        char = self.current_character
+        self._sync_ui_to_character() # Ensure notes are up-to-date before exporting
+
+        # Suggest a filename and open the save dialog
+        default_filename = f"{char.name.replace(' ', '_')}_sheet.md"
+        filepath = filedialog.asksaveasfilename(
+            initialfile=default_filename,
+            defaultextension=".md",
+            filetypes=[("Markdown Files", "*.md"), ("Text Files", "*.txt"), ("All Files", "*.*")],
+            parent=self.root,
+            title="Export Character Sheet"
+        )
+
+        if not filepath:
+            return # User cancelled the dialog
+
+        # Build the markdown content string
+        content = []
+        content.append(f"# Character Sheet: {char.name}\n")
+
+        # Status Section
+        content.append("## Status")
+        content.append(f"- **Level:** {char.level}")
+        next_exp = char.get_exp_for_next_level(char.level)
+        exp_str = f"{char.exp} / {next_exp}" if next_exp != float('inf') else "MAX"
+        content.append(f"- **Experience:** {exp_str}")
+        content.append(f"- **Health:** {char.get_health()}")
+        content.append(f"- **Mana:** {char.get_mana()}")
+        content.append("\n---\n")
+
+        # Attributes Section
+        content.append("## Attributes")
+        content.append("| Attribute    | Base | Total | Modifier |")
+        content.append("|--------------|------|-------|----------|")
+        for attr in CORE_ATTRIBUTES:
+            base = char.attributes.get(attr, 10)
+            total = char.get_total_attribute(attr)
+            mod = char.get_attribute_modifier(attr)
+            content.append(f"| {attr:<12} | {base:<4} | {total:<5} | {mod:+<8} |")
+        content.append("\n---\n")
+
+        # Skills Section
+        if char.skills:
+            content.append("## Skills")
+            content.append("| Skill        | Level | Experience |")
+            content.append("|--------------|-------|------------|")
+            for skill in sorted(char.skills, key=lambda s: s['name']):
+                skill_next_exp = char.get_exp_for_next_level(skill['level'])
+                skill_exp_str = f"{skill['exp']}/{skill_next_exp}" if skill_next_exp != float('inf') else "MAX"
+                content.append(f"| {skill['name']:<12} | {skill['level']:<5} | {skill_exp_str:<10} |")
+            content.append("\n---\n")
+
+        # Equipment, Inventory, and Notes sections follow...
+        content.append("## Equipment")
+        equipped_items = [f"- **{slot}:** {item.name}" for slot, item in char.equipment.items() if item]
+        content.append("\n".join(equipped_items) if equipped_items else "_No items equipped._")
+        content.append("\n---\n")
+
+        content.append("## Inventory")
+        inv_items = [f"- **{item.name} (x{item.quantity})**" + (f": {item.description}" if item.description else "") for item in sorted(char.inventory, key=lambda i: i.name)]
+        content.append("\n".join(inv_items) if inv_items else "_Inventory is empty._")
+        content.append("\n---\n")
+
+        content.append("## Notes")
+        content.append(char.notes.strip() if char.notes.strip() else "_No notes._")
+
+        # Write the content to the selected file
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write("\n".join(content))
+            messagebox.showinfo("Export Successful", f"Character sheet for '{char.name}' has been saved.", parent=self.root)
+        except IOError as e:
+            messagebox.showerror("Export Error", f"Failed to save file:\n{e}", parent=self.root)
 
     def _handle_add(self, item_type, dialog_class, collection, update_view_func, factory=None):
         if not self.current_character: return
