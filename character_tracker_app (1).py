@@ -82,6 +82,11 @@ class Character:
                 bonus += item.effects.get(attr_name, 0)
         return base_value + bonus
 
+    def get_attribute_modifier(self, attr_name):
+        """Calculates the attribute modifier based on the total score (e.g., D&D style)."""
+        total_score = self.get_total_attribute(attr_name)
+        return (total_score - 10) // 2
+
     def get_exp_for_next_level(self, level):
         if 1 <= level < MAX_LEVEL:
             return EXP_TABLE[level]
@@ -258,6 +263,15 @@ class CharacterTracker:
         self.theme = Themes.dark if self.theme_name == "dark" else Themes.light
         self.tooltips = []
 
+        # --- Search/Filter Variables ---
+        self.skill_search_var = tk.StringVar()
+        self.inventory_search_var = tk.StringVar()
+        self.skill_search_var.trace_add("write", self._on_skill_search)
+        self.inventory_search_var.trace_add("write", self._on_inventory_search)
+        self.skill_exp_progress_var = tk.DoubleVar()
+        self.skill_exp_label_var = tk.StringVar(value="Select a skill to see progress")
+        self.skill_exp_progress_label_var = tk.StringVar()
+
         self._apply_styles()
         self._setup_ui()
         self._update_all_views()
@@ -267,6 +281,11 @@ class CharacterTracker:
     @property
     def current_character(self):
         return self.characters.get(self.active_character_name)
+
+    def _validate_integer_input(self, P):
+        """Validation command to allow only integers in an Entry widget."""
+        # P is the value of the entry if the edit is allowed
+        return str.isdigit(P) or P == ""
 
     def _apply_styles(self):
         self.root.configure(bg=self.theme["BACKGROUND"])
@@ -290,6 +309,7 @@ class CharacterTracker:
         style.configure("Treeview", background=self.theme["WIDGET_BG"], fieldbackground=self.theme["WIDGET_BG"], foreground=self.theme["WIDGET_FG"], font=Themes.FONT_NORMAL)
         style.configure("Treeview.Heading", background=self.theme["ACCENT_COLOR"], foreground=Themes.light["WIDGET_FG"], font=Themes.FONT_BOLD, relief="flat")
         style.map("Treeview.Heading", background=[('active', self.theme["ACCENT_COLOR"])])
+        style.configure("green.Horizontal.TProgressbar", background=self.theme["ACCENT_COLOR"])
         self.root.option_add("*TCombobox*Listbox*Background", self.theme["WIDGET_BG"])
         self.root.option_add("*TCombobox*Listbox*Foreground", self.theme["WIDGET_FG"])
 
@@ -352,6 +372,8 @@ class CharacterTracker:
         self.main_exp_gain = tk.IntVar()
         self.health_var = tk.StringVar()
         self.mana_var = tk.StringVar()
+        self.exp_progress_var = tk.DoubleVar()
+        self.exp_progress_label_var = tk.StringVar()
     
     def _create_status_info_frame(self, parent_tab):
         """Creates the frame displaying character's core status information."""
@@ -374,14 +396,27 @@ class CharacterTracker:
             entry.grid(row=i, column=1, sticky='ew', padx=5, pady=5)
             if label_text == "Name:":
                 entry.config(width=30) # Specific width for the name entry
+        
+        # --- EXP Progress Bar ---
+        progress_frame = ttk.Frame(status_frame)
+        progress_frame.grid(row=i + 1, column=0, columnspan=2, sticky='ew', pady=(20, 0))
+        
+        progress_bar = ttk.Progressbar(progress_frame, variable=self.exp_progress_var, style="green.Horizontal.TProgressbar", length=300)
+        progress_bar.pack(fill='x')
+
+        # Overlay label on the progress bar
+        progress_label = ttk.Label(progress_frame, textvariable=self.exp_progress_label_var, background=self.theme["BACKGROUND"], foreground=self.theme["FOREGROUND"], font=Themes.FONT_BOLD)
+        progress_label.place(relx=0.5, rely=0.5, anchor="center")
 
     def _create_status_exp_controls(self, parent_tab):
         """Creates the frame for adding/removing character experience."""
         exp_frame = ttk.LabelFrame(parent_tab, text="Add Character Experience", padding="15")
         exp_frame.pack(fill="x", pady=20)
-        
+
+        vcmd = (self.root.register(self._validate_integer_input), '%P')
+
         ttk.Label(exp_frame, text="Amount:").pack(side="left", padx=5)
-        ttk.Entry(exp_frame, textvariable=self.main_exp_gain, width=15).pack(side="left", padx=5, expand=True, fill="x")
+        ttk.Entry(exp_frame, textvariable=self.main_exp_gain, width=15, validate='key', validatecommand=vcmd).pack(side="left", padx=5, expand=True, fill="x")
         
         apply_exp_btn = ttk.Button(exp_frame, text="Apply EXP", command=self._apply_main_exp)
         apply_exp_btn.pack(side="left", padx=5)
@@ -403,6 +438,7 @@ class CharacterTracker:
         """Initializes Tkinter variables for attributes."""
         self.attribute_vars = {attr: tk.IntVar() for attr in self.current_character.attributes.keys()}
         self.total_attribute_vars = {attr: tk.StringVar() for attr in self.current_character.attributes.keys()}
+        self.attribute_modifier_vars = {attr: tk.StringVar() for attr in self.current_character.attributes.keys()}
     
     def _create_attribute_display_frame(self, parent_tab):
         """Creates the frame displaying core attributes."""
@@ -412,14 +448,18 @@ class CharacterTracker:
         ttk.Label(attr_frame, text="Attribute", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky='w', padx=5, pady=2)
         ttk.Label(attr_frame, text="Base", font=Themes.FONT_BOLD).grid(row=0, column=1, sticky='w', padx=5, pady=2)
         ttk.Label(attr_frame, text="Total", font=Themes.FONT_BOLD).grid(row=0, column=2, sticky='w', padx=5, pady=2)
+        ttk.Label(attr_frame, text="Modifier", font=Themes.FONT_BOLD).grid(row=0, column=3, sticky='w', padx=5, pady=2)
+
+        vcmd = (self.root.register(self._validate_integer_input), '%P')
 
         row = 1 # Start from row 1 for attribute entries
         for attr, var in self.attribute_vars.items():
             ttk.Label(attr_frame, text=f"{attr}:", font=Themes.FONT_NORMAL).grid(row=row, column=0, sticky='w', padx=5, pady=5)
-            entry = ttk.Entry(attr_frame, textvariable=var, width=10, font=Themes.FONT_NORMAL)
+            entry = ttk.Entry(attr_frame, textvariable=var, width=10, font=Themes.FONT_NORMAL, validate='key', validatecommand=vcmd)
             entry.grid(row=row, column=1, sticky='ew', padx=5, pady=5)
             entry.bind("<FocusOut>", self._on_attribute_change)
             ttk.Label(attr_frame, textvariable=self.total_attribute_vars[attr], font=Themes.FONT_NORMAL).grid(row=row, column=2, sticky='w', padx=5, pady=5)
+            ttk.Label(attr_frame, textvariable=self.attribute_modifier_vars[attr], font=Themes.FONT_BOLD).grid(row=row, column=3, sticky='w', padx=5, pady=5)
             row += 1
     
     def _on_attribute_change(self, event=None):
@@ -438,6 +478,7 @@ class CharacterTracker:
         tab = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(tab, text="Skills")
 
+        self._create_skill_search_bar(tab)
         self._create_skill_tree_view(tab)
         self._create_skill_controls(tab)
 
@@ -456,10 +497,19 @@ class CharacterTracker:
         self.skill_tree.column("#3", width=120, anchor="center")
         self.skill_tree.column("#4", width=120, anchor="center")
         self.skill_tree.pack(side="left", fill="both", expand=True, pady=5)
+        self.skill_tree.bind("<<TreeviewSelect>>", self._on_skill_select)
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.skill_tree.yview)
         self.skill_tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
+    
+    def _create_skill_search_bar(self, parent_tab):
+        """Creates a search bar for filtering skills."""
+        search_frame = ttk.Frame(parent_tab)
+        search_frame.pack(fill="x", pady=(0, 5), padx=5)
+        ttk.Label(search_frame, text="Search:").pack(side="left", padx=(0, 5))
+        search_entry = ttk.Entry(search_frame, textvariable=self.skill_search_var)
+        search_entry.pack(side="left", fill="x", expand=True)
     
     def _create_skill_controls(self, parent_tab):
         """Creates buttons and EXP input for skill management."""
@@ -473,8 +523,25 @@ class CharacterTracker:
         exp_frame = ttk.LabelFrame(parent_tab, text="Add Experience to Selected Skill", padding="15")
         exp_frame.pack(fill="x", pady=10)
         self.skill_exp_gain = tk.IntVar()
+
+        # --- Skill Progress Bar ---
+        skill_progress_frame = ttk.Frame(exp_frame)
+        skill_progress_frame.pack(fill='x', pady=(0, 10), expand=True)
+
+        # Label for skill name (above the bar)
+        ttk.Label(skill_progress_frame, textvariable=self.skill_exp_label_var, font=Themes.FONT_ITALIC).pack()
+
+        # Container for the progress bar and its overlay text
+        bar_container = ttk.Frame(skill_progress_frame)
+        bar_container.pack(fill='x', pady=(5,0), expand=True)
+        ttk.Progressbar(bar_container, variable=self.skill_exp_progress_var, style="green.Horizontal.TProgressbar").pack(fill='x', expand=True)
+
+        skill_progress_label = ttk.Label(bar_container, textvariable=self.skill_exp_progress_label_var, background=self.theme["BACKGROUND"], foreground=self.theme["FOREGROUND"], font=Themes.FONT_NORMAL)
+        skill_progress_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        vcmd = (self.root.register(self._validate_integer_input), '%P')
         ttk.Label(exp_frame, text="Amount:").pack(side="left", padx=5)
-        ttk.Entry(exp_frame, textvariable=self.skill_exp_gain, width=15).pack(side="left", padx=5, expand=True, fill="x")
+        ttk.Entry(exp_frame, textvariable=self.skill_exp_gain, width=15, validate='key', validatecommand=vcmd).pack(side="left", padx=5, expand=True, fill="x")
         
         apply_exp_btn = ttk.Button(exp_frame, text="Apply to Selected", command=self._apply_exp_to_skill)
         apply_exp_btn.pack(side="left", padx=5)
@@ -516,6 +583,13 @@ class CharacterTracker:
         # --- Inventory Pane ---
         inv_frame = ttk.LabelFrame(main_pane, text="Inventory", padding=10)
         main_pane.add(inv_frame, weight=2)
+
+        # --- Inventory Search Bar ---
+        inv_search_frame = ttk.Frame(inv_frame)
+        inv_search_frame.pack(fill="x", pady=(0, 5))
+        ttk.Label(inv_search_frame, text="Search:").pack(side="left", padx=(0, 5))
+        search_entry = ttk.Entry(inv_search_frame, textvariable=self.inventory_search_var)
+        search_entry.pack(side="left", fill="x", expand=True)
 
         inv_cols = ("#1", "#2", "#3")
         self.inv_tree = ttk.Treeview(inv_frame, columns=inv_cols, show="headings", height=15)
@@ -566,7 +640,12 @@ class CharacterTracker:
         text_frame.pack(fill="both", expand=True)
         
         self.notes_text = tk.Text(text_frame, wrap='word', relief="flat", insertbackground=self.theme["WIDGET_FG"])
-        self.notes_text.bind("<<Modified>>", self._on_notes_modified)
+        # Bindings for smooth scroll and content modification
+        self.notes_text.bind("<MouseWheel>", self._smooth_scroll_handler)
+        self.notes_text.bind("<Button-4>", self._smooth_scroll_handler) # For Linux scroll up
+        self.notes_text.bind("<Button-5>", self._smooth_scroll_handler) # For Linux scroll down
+        self.notes_text.bind("<<Modified>>", self._on_notes_modified) # For saving changes
+
         scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=self.notes_text.yview)
         self.notes_text.config(yscrollcommand=scrollbar.set)
         self.notes_text.pack(side="left", fill="both", expand=True, padx=5, pady=5)
@@ -591,43 +670,78 @@ class CharacterTracker:
         self.level_var.set(self.current_character.level)
         self.exp_var.set(self.current_character.exp)
         next_exp = self.current_character.get_exp_for_next_level(self.current_character.level)
-        self.exp_to_next_var.set(str(next_exp) if next_exp != float('inf') else "MAX LEVEL")
         self.health_var.set(self.current_character.get_health())
         self.mana_var.set(self.current_character.get_mana())
+
+        if next_exp != float('inf'):
+            self.exp_to_next_var.set(f"{self.current_character.exp} / {next_exp}")
+            progress = (self.current_character.exp / next_exp) * 100 if next_exp > 0 else 100
+            self.exp_progress_var.set(progress)
+            self.exp_progress_label_var.set(f"{self.current_character.exp} / {next_exp} ({progress:.1f}%)")
+        else:
+            self.exp_to_next_var.set("MAX LEVEL")
+            self.exp_progress_var.set(100)
+            self.exp_progress_label_var.set("MAX LEVEL")
+
+        # Reset skill progress on character change
+        self._reset_skill_progress_bar()
 
     def _update_attributes_view(self):
         for attr, var in self.attribute_vars.items():
             base_val = self.current_character.attributes.get(attr, 0)
             total_val = self.current_character.get_total_attribute(attr)
+            modifier = self.current_character.get_attribute_modifier(attr)
             var.set(base_val)
             if total_val > base_val:
                 self.total_attribute_vars[attr].set(f"{total_val} ({base_val} + {total_val - base_val})")
             else:
                 self.total_attribute_vars[attr].set(total_val)
+            self.attribute_modifier_vars[attr].set(f"{modifier:+}") # Show + for positive
 
     def _update_skills_view(self):
         self.skill_tree.tag_configure('oddrow', background=self.theme["TREEVIEW_ODD"], foreground=self.theme["WIDGET_FG"])
         self.skill_tree.tag_configure('evenrow', background=self.theme["TREEVIEW_EVEN"], foreground=self.theme["WIDGET_FG"])
         for i in self.skill_tree.get_children():
             self.skill_tree.delete(i)
-        for i, skill in enumerate(self.current_character.skills):
+        self._reset_skill_progress_bar()
+
+        search_term = self.skill_search_var.get().lower()
+        
+        filtered_skills = [
+            (i, skill) for i, skill in enumerate(self.current_character.skills)
+            if search_term in skill['name'].lower()
+        ]
+
+        for i, (original_index, skill) in enumerate(filtered_skills):
             next_exp = self.current_character.get_exp_for_next_level(skill['level'])
             next_exp_str = str(next_exp) if next_exp != float('inf') else "MAX"
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-            self.skill_tree.insert("", "end", iid=i, values=(skill['name'], skill['level'], skill['exp'], next_exp_str), tags=(tag,))
+            # Use original_index as the IID to link back to the original list
+            self.skill_tree.insert("", "end", iid=original_index, values=(skill['name'], skill['level'], skill['exp'], next_exp_str), tags=(tag,))
 
     def _update_inventory_views(self):
+        # Equipment view is not filtered
         for i in self.equip_tree.get_children():
             self.equip_tree.delete(i)
         for slot, item in self.current_character.equipment.items():
             item_name = item.name if item else "-"
             self.equip_tree.insert("", "end", values=(slot, item_name))
 
+        # Inventory view is filtered
         for i in self.inv_tree.get_children():
             self.inv_tree.delete(i)
-        for i, item in enumerate(self.current_character.inventory):
+
+        search_term = self.inventory_search_var.get().lower()
+        
+        filtered_inventory = [
+            (i, item) for i, item in enumerate(self.current_character.inventory)
+            if search_term in item.name.lower()
+        ]
+
+        for i, (original_index, item) in enumerate(filtered_inventory):
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
-            self.inv_tree.insert("", "end", iid=i, values=(item.name, item.item_type, item.quantity), tags=(tag,))
+            # Use original_index as the IID to link back to the original list
+            self.inv_tree.insert("", "end", iid=original_index, values=(item.name, item.item_type, item.quantity), tags=(tag,))
         
         self.item_desc_label.config(text="Click an item to see its description.")
         self._update_attributes_view() # Update attributes when equipment changes
@@ -638,6 +752,7 @@ class CharacterTracker:
         self.notes_text.edit_modified(False)
 
     def _update_theme_specific_widgets(self):
+        """Updates widgets that need manual theme configuration."""
         self.notes_text.config(bg=self.theme["WIDGET_BG"], fg=self.theme["WIDGET_FG"], insertbackground=self.theme["WIDGET_FG"])
 
     def _create_context_menu(self, treeview, commands):
@@ -658,6 +773,31 @@ class CharacterTracker:
 
         treeview.bind("<Button-3>", show_menu)
         return menu
+
+    def _smooth_scroll_handler(self, event):
+        """Handles mouse wheel events and initiates smooth scrolling for the Notes tab."""
+        # Stop any ongoing scroll animation to prevent conflicts
+        if hasattr(self, "_scroll_job"):
+            self.root.after_cancel(self._scroll_job)
+
+        # Determine scroll direction and magnitude (cross-platform)
+        if event.num == 5 or event.delta < 0:
+            delta = 120  # Standard delta for one wheel click down
+        else:
+            delta = -120 # Standard delta for one wheel click up
+
+        self._perform_smooth_scroll(delta)
+        return "break" # Prevent the default, jarring scroll behavior
+
+    def _perform_smooth_scroll(self, delta, step=0):
+        """Recursively scrolls the text widget to create a smooth, eased-out effect."""
+        total_steps = 15
+        if step < total_steps:
+            # Ease-out: move less as we approach the end of the animation
+            fraction_to_scroll = delta / total_steps
+            self.notes_text.yview_scroll(int(fraction_to_scroll / 10), "units") # Divide for finer control
+            
+            self._scroll_job = self.root.after(12, self._perform_smooth_scroll, delta, step + 1)
 
     def _toggle_theme(self):
         self.theme_name = "light" if self.theme_name == "dark" else "dark"
@@ -702,6 +842,50 @@ class CharacterTracker:
             self._sync_ui_to_character()
             self.active_character_name = new_name
             self._update_all_views()
+
+    def _on_skill_select(self, event=None):
+        if not self.current_character: return
+        selected_iid = self.skill_tree.focus()
+        if not selected_iid:
+            self._reset_skill_progress_bar()
+            return
+
+        try:
+            index = int(selected_iid)
+            skill = self.current_character.skills[index]
+            current_exp = skill['exp']
+            next_exp = self.current_character.get_exp_for_next_level(skill['level'])
+
+            if next_exp != float('inf'):
+                progress = (current_exp / next_exp) * 100 if next_exp > 0 else 100
+                self.skill_exp_progress_var.set(progress)
+                self.skill_exp_label_var.set(f"{skill['name']}:")
+                self.skill_exp_progress_label_var.set(f"{current_exp} / {next_exp} ({progress:.1f}%)")
+            else:
+                self.skill_exp_progress_var.set(100)
+                self.skill_exp_label_var.set(f"{skill['name']} is at MAX LEVEL")
+                self.skill_exp_progress_label_var.set("MAX")
+
+        except (IndexError, ValueError):
+            self._reset_skill_progress_bar()
+
+    def _reset_skill_progress_bar(self):
+        self.skill_exp_progress_var.set(0)
+        self.skill_exp_label_var.set("Select a skill to see progress")
+        self.skill_exp_progress_label_var.set("")
+
+    def _on_character_select(self, event):
+        new_name = self.character_selector_var.get()
+        if new_name and new_name != self.active_character_name:
+            self._sync_ui_to_character()
+            self.active_character_name = new_name
+            self._update_all_views()
+
+    def _on_skill_search(self, *args):
+        self._update_skills_view()
+
+    def _on_inventory_search(self, *args):
+        self._update_inventory_views()
 
     def _add_character(self):
         new_name = simpledialog.askstring("Add New Character", "Enter the name for the new character:", parent=self.root)
@@ -955,15 +1139,40 @@ class CharacterTracker:
         self.root.destroy()
 
 
-class SkillEditorDialog(tk.Toplevel):
-    def __init__(self, parent, theme, title, skill=None):
-        super().__init__(parent)
-        self.title(title)
-        self.geometry("350x180")
+class AnimatedDialog(tk.Toplevel):
+    """A base class for dialogs that fade in and out."""
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
         self.transient(parent)
         self.grab_set()
-        self.configure(bg=theme["BACKGROUND"])
+        self.alpha = 0
+        self.attributes('-alpha', self.alpha)
+        self.after(10, self._fade_in)
 
+    def _fade_in(self):
+        if self.alpha < 1.0:
+            self.alpha = min(self.alpha + 0.1, 1.0)
+            self.attributes('-alpha', self.alpha)
+            self.after(15, self._fade_in)
+
+    def close(self):
+        """Initiates the fade-out animation and then destroys the window."""
+        self.grab_release()
+        self._fade_out_and_destroy()
+
+    def _fade_out_and_destroy(self):
+        if self.alpha > 0.0:
+            self.alpha = max(self.alpha - 0.1, 0.0)
+            self.attributes('-alpha', self.alpha)
+            self.after(15, self._fade_out_and_destroy)
+        else:
+            self.destroy()
+
+class SkillEditorDialog(AnimatedDialog):
+    def __init__(self, parent, theme, title, skill=None):
+        super().__init__(parent, bg=theme["BACKGROUND"])
+        self.title(title)
+        self.geometry("350x180")
         self.skill_name = tk.StringVar(value=skill['name'] if skill else "")
         self.skill_level = tk.IntVar(value=skill['level'] if skill else 1)
         self.skill_exp = tk.IntVar(value=skill['exp'] if skill else 0)
@@ -973,18 +1182,23 @@ class SkillEditorDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.wait_window(self)
 
+    def _validate_integer(self, P):
+        return str.isdigit(P) or P == ""
+
     def _create_widgets(self, theme):
         frame = ttk.Frame(self, padding="15")
         frame.pack(fill="both", expand=True)
+
+        vcmd = (self.register(self._validate_integer), '%P')
 
         ttk.Label(frame, text="Skill Name:", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky="w", pady=5)
         ttk.Entry(frame, textvariable=self.skill_name, font=Themes.FONT_NORMAL).grid(row=0, column=1, sticky="ew", pady=5)
 
         ttk.Label(frame, text="Level:", font=Themes.FONT_BOLD).grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Entry(frame, textvariable=self.skill_level, font=Themes.FONT_NORMAL).grid(row=1, column=1, sticky="ew", pady=5)
+        ttk.Entry(frame, textvariable=self.skill_level, font=Themes.FONT_NORMAL, validate='key', validatecommand=vcmd).grid(row=1, column=1, sticky="ew", pady=5)
 
         ttk.Label(frame, text="Current EXP:", font=Themes.FONT_BOLD).grid(row=2, column=0, sticky="w", pady=5)
-        ttk.Entry(frame, textvariable=self.skill_exp, font=Themes.FONT_NORMAL).grid(row=2, column=1, sticky="ew", pady=5)
+        ttk.Entry(frame, textvariable=self.skill_exp, font=Themes.FONT_NORMAL, validate='key', validatecommand=vcmd).grid(row=2, column=1, sticky="ew", pady=5)
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=3, column=0, columnspan=2, pady=15)
@@ -1001,22 +1215,18 @@ class SkillEditorDialog(tk.Toplevel):
             if not self.result["name"].strip():
                 messagebox.showerror("Input Error", "Skill name cannot be empty.", parent=self)
                 return
-            self.destroy()
+            self.close()
         except tk.TclError:
             messagebox.showerror("Input Error", "Level and EXP must be valid numbers.", parent=self)
 
     def _on_cancel(self):
         self.result = None
-        self.destroy()
+        self.close()
 
-class EffectEditorDialog(tk.Toplevel):
+class EffectEditorDialog(AnimatedDialog):
     def __init__(self, parent, theme, title, effect=None):
-        super().__init__(parent)
+        super().__init__(parent, bg=theme["BACKGROUND"])
         self.title(title)
-        self.transient(parent)
-        self.grab_set()
-        self.configure(bg=theme["BACKGROUND"])
-
         self.attribute = tk.StringVar(value=effect[0] if effect else CORE_ATTRIBUTES[0])
         self.value = tk.IntVar(value=effect[1] if effect else 0)
         self.result = None
@@ -1025,15 +1235,21 @@ class EffectEditorDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.wait_window(self)
 
+    def _validate_integer(self, P):
+        # Allow negative numbers for effects
+        return (P.isdigit() or (P.startswith('-') and P[1:].isdigit()) or P == "" or P == "-")
+
     def _create_widgets(self, theme):
         frame = ttk.Frame(self, padding="15")
         frame.pack(fill="both", expand=True)
+
+        vcmd = (self.register(self._validate_integer), '%P')
 
         ttk.Label(frame, text="Attribute:", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky="w", pady=5)
         ttk.Combobox(frame, textvariable=self.attribute, values=CORE_ATTRIBUTES, state="readonly").grid(row=0, column=1, sticky="ew", pady=5)
 
         ttk.Label(frame, text="Value:", font=Themes.FONT_BOLD).grid(row=1, column=0, sticky="w", pady=5)
-        ttk.Entry(frame, textvariable=self.value, font=Themes.FONT_NORMAL).grid(row=1, column=1, sticky="ew", pady=5)
+        ttk.Entry(frame, textvariable=self.value, font=Themes.FONT_NORMAL, validate='key', validatecommand=vcmd).grid(row=1, column=1, sticky="ew", pady=5)
 
         btn_frame = ttk.Frame(frame)
         btn_frame.grid(row=2, column=0, columnspan=2, pady=15)
@@ -1043,22 +1259,23 @@ class EffectEditorDialog(tk.Toplevel):
     def _on_ok(self):
         try:
             self.result = (self.attribute.get(), self.value.get())
-            self.destroy()
+            # Final check for empty or just "-"
+            if str(self.result[1]).strip() in ["", "-"]:
+                messagebox.showerror("Input Error", "Value must be a valid number.", parent=self)
+                return
+            self.close()
         except tk.TclError:
             messagebox.showerror("Input Error", "Value must be a valid number.", parent=self)
 
     def _on_cancel(self):
         self.result = None
-        self.destroy()
+        self.close()
 
-class ItemEditorDialog(tk.Toplevel):
+class ItemEditorDialog(AnimatedDialog):
     def __init__(self, parent, theme, title, item=None):
-        super().__init__(parent)
+        super().__init__(parent, bg=theme["BACKGROUND"])
         self.title(title)
         self.geometry("450x450") # Adjusted size
-        self.transient(parent)
-        self.grab_set()
-        self.configure(bg=theme["BACKGROUND"])
         self.theme = theme
 
         self.item_name = tk.StringVar(value=item.name if item else "")
@@ -1073,6 +1290,9 @@ class ItemEditorDialog(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
         self.wait_window(self)
 
+    def _validate_integer(self, P):
+        return str.isdigit(P) or P == ""
+
     def _create_widgets(self):
         frame = ttk.Frame(self, padding="15")
         frame.pack(fill="both", expand=True)
@@ -1080,12 +1300,15 @@ class ItemEditorDialog(tk.Toplevel):
         # --- Basic Info ---
         info_frame = ttk.Frame(frame)
         info_frame.pack(fill="x", pady=(0, 15))
+
+        vcmd = (self.register(self._validate_integer), '%P')
+
         ttk.Label(info_frame, text="Item Name:", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky="w", pady=2)
         ttk.Entry(info_frame, textvariable=self.item_name, font=Themes.FONT_NORMAL).grid(row=0, column=1, sticky="ew", pady=2)
         ttk.Label(info_frame, text="Description:", font=Themes.FONT_BOLD).grid(row=1, column=0, sticky="w", pady=2)
         ttk.Entry(info_frame, textvariable=self.item_desc, font=Themes.FONT_NORMAL).grid(row=1, column=1, sticky="ew", pady=2)
         ttk.Label(info_frame, text="Quantity:", font=Themes.FONT_BOLD).grid(row=2, column=0, sticky="w", pady=2)
-        ttk.Entry(info_frame, textvariable=self.item_qty, font=Themes.FONT_NORMAL).grid(row=2, column=1, sticky="ew", pady=2)
+        ttk.Entry(info_frame, textvariable=self.item_qty, font=Themes.FONT_NORMAL, validate='key', validatecommand=vcmd).grid(row=2, column=1, sticky="ew", pady=2)
         ttk.Label(info_frame, text="Item Type:", font=Themes.FONT_BOLD).grid(row=3, column=0, sticky="w", pady=2)
         ttk.Combobox(info_frame, textvariable=self.item_type, values=ITEM_TYPES, state="readonly").grid(row=3, column=1, sticky="ew", pady=2)
         info_frame.columnconfigure(1, weight=1)
@@ -1164,13 +1387,13 @@ class ItemEditorDialog(tk.Toplevel):
             if self.result["quantity"] < 1:
                 messagebox.showerror("Input Error", "Quantity must be at least 1.", parent=self)
                 return
-            self.destroy()
+            self.close()
         except tk.TclError:
             messagebox.showerror("Input Error", "Quantity must be a valid number.", parent=self)
 
     def _on_cancel(self):
         self.result = None
-        self.destroy()
+        self.close()
 
 if __name__ == '__main__':
     root = tk.Tk()
