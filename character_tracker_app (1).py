@@ -131,7 +131,6 @@ class Character:
                 skill['exp'] = 0
             return leveled_down, skill.get('level')
         return False, None
-        return False, None
 
     def add_skill(self, name):
         if any(s['name'] == name for s in self.skills):
@@ -336,9 +335,16 @@ class CharacterTracker:
         self.tooltips.append(ToolTip(self.theme_button, "Switch between light and dark themes.", self.theme))
 
     def _create_status_tab(self):
+        """Creates the 'Status' tab with character info and EXP controls."""
         tab = ttk.Frame(self.notebook, padding="20")
         self.notebook.add(tab, text="Status")
 
+        self._init_status_vars()
+        self._create_status_info_frame(tab)
+        self._create_status_exp_controls(tab)
+
+    def _init_status_vars(self):
+        """Initializes Tkinter variables for the Status tab."""
         self.name_var = tk.StringVar()
         self.level_var = tk.IntVar()
         self.exp_var = tk.IntVar()
@@ -346,34 +352,37 @@ class CharacterTracker:
         self.main_exp_gain = tk.IntVar()
         self.health_var = tk.StringVar()
         self.mana_var = tk.StringVar()
-
-        status_frame = ttk.Frame(tab)
+    
+    def _create_status_info_frame(self, parent_tab):
+        """Creates the frame displaying character's core status information."""
+        status_frame = ttk.Frame(parent_tab)
         status_frame.pack(fill='x', pady=10)
 
-        ttk.Label(status_frame, text="Name:", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky='w', padx=5, pady=5)
-        name_entry = ttk.Entry(status_frame, textvariable=self.name_var, width=30, font=Themes.FONT_NORMAL)
-        name_entry.grid(row=0, column=1, sticky='ew', padx=5, pady=5)
-        name_entry.config(state='readonly')
+        # Define labels and their corresponding Tkinter variables
+        info_fields = [
+            ("Name:", self.name_var),
+            ("Level:", self.level_var),
+            ("Current EXP:", self.exp_var),
+            ("EXP to Next:", self.exp_to_next_var),
+            ("Health:", self.health_var),
+            ("Mana:", self.mana_var)
+        ]
 
-        ttk.Label(status_frame, text="Level:", font=Themes.FONT_BOLD).grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        ttk.Entry(status_frame, textvariable=self.level_var, state='readonly', font=Themes.FONT_NORMAL).grid(row=1, column=1, sticky='ew', padx=5, pady=5)
+        for i, (label_text, var) in enumerate(info_fields):
+            ttk.Label(status_frame, text=label_text, font=Themes.FONT_BOLD).grid(row=i, column=0, sticky='w', padx=5, pady=5)
+            entry = ttk.Entry(status_frame, textvariable=var, state='readonly', font=Themes.FONT_NORMAL)
+            entry.grid(row=i, column=1, sticky='ew', padx=5, pady=5)
+            if label_text == "Name:":
+                entry.config(width=30) # Specific width for the name entry
 
-        ttk.Label(status_frame, text="Current EXP:", font=Themes.FONT_BOLD).grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        ttk.Entry(status_frame, textvariable=self.exp_var, state='readonly', font=Themes.FONT_NORMAL).grid(row=2, column=1, sticky='ew', padx=5, pady=5)
-
-        ttk.Label(status_frame, text="EXP to Next:", font=Themes.FONT_BOLD).grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        ttk.Entry(status_frame, textvariable=self.exp_to_next_var, state='readonly', font=Themes.FONT_NORMAL).grid(row=3, column=1, sticky='ew', padx=5, pady=5)
-
-        ttk.Label(status_frame, text="Health:", font=Themes.FONT_BOLD).grid(row=4, column=0, sticky='w', padx=5, pady=5)
-        ttk.Entry(status_frame, textvariable=self.health_var, state='readonly', font=Themes.FONT_NORMAL).grid(row=4, column=1, sticky='ew', padx=5, pady=5)
-
-        ttk.Label(status_frame, text="Mana:", font=Themes.FONT_BOLD).grid(row=5, column=0, sticky='w', padx=5, pady=5)
-        ttk.Entry(status_frame, textvariable=self.mana_var, state='readonly', font=Themes.FONT_NORMAL).grid(row=5, column=1, sticky='ew', padx=5, pady=5)
-
-        exp_frame = ttk.LabelFrame(tab, text="Add Character Experience", padding="15")
+    def _create_status_exp_controls(self, parent_tab):
+        """Creates the frame for adding/removing character experience."""
+        exp_frame = ttk.LabelFrame(parent_tab, text="Add Character Experience", padding="15")
         exp_frame.pack(fill="x", pady=20)
+        
         ttk.Label(exp_frame, text="Amount:").pack(side="left", padx=5)
         ttk.Entry(exp_frame, textvariable=self.main_exp_gain, width=15).pack(side="left", padx=5, expand=True, fill="x")
+        
         apply_exp_btn = ttk.Button(exp_frame, text="Apply EXP", command=self._apply_main_exp)
         apply_exp_btn.pack(side="left", padx=5)
         self.tooltips.append(ToolTip(apply_exp_btn, "Add EXP to the character's main level.", self.theme))
@@ -383,24 +392,28 @@ class CharacterTracker:
         self.tooltips.append(ToolTip(remove_exp_btn, "Remove EXP from the character's main level.", self.theme))
 
     def _create_attributes_tab(self):
+        """Creates the 'Attributes' tab with core attribute display and editing."""
         tab = ttk.Frame(self.notebook, padding="20")
         self.notebook.add(tab, text="Attributes")
 
+        self._init_attribute_vars()
+        self._create_attribute_display_frame(tab)
+    
+    def _init_attribute_vars(self):
+        """Initializes Tkinter variables for attributes."""
         self.attribute_vars = {attr: tk.IntVar() for attr in self.current_character.attributes.keys()}
         self.total_attribute_vars = {attr: tk.StringVar() for attr in self.current_character.attributes.keys()}
-
-        main_frame = ttk.Frame(tab)
-        main_frame.pack(fill='x', pady=10)
-
-        # Create a grid for the attributes
-        attr_frame = ttk.LabelFrame(main_frame, text="Core Attributes", padding=15)
+    
+    def _create_attribute_display_frame(self, parent_tab):
+        """Creates the frame displaying core attributes."""
+        attr_frame = ttk.LabelFrame(parent_tab, text="Core Attributes", padding=15)
         attr_frame.pack(fill='x')
 
         ttk.Label(attr_frame, text="Attribute", font=Themes.FONT_BOLD).grid(row=0, column=0, sticky='w', padx=5, pady=2)
         ttk.Label(attr_frame, text="Base", font=Themes.FONT_BOLD).grid(row=0, column=1, sticky='w', padx=5, pady=2)
         ttk.Label(attr_frame, text="Total", font=Themes.FONT_BOLD).grid(row=0, column=2, sticky='w', padx=5, pady=2)
 
-        row = 1
+        row = 1 # Start from row 1 for attribute entries
         for attr, var in self.attribute_vars.items():
             ttk.Label(attr_frame, text=f"{attr}:", font=Themes.FONT_NORMAL).grid(row=row, column=0, sticky='w', padx=5, pady=5)
             entry = ttk.Entry(attr_frame, textvariable=var, width=10, font=Themes.FONT_NORMAL)
@@ -421,12 +434,17 @@ class CharacterTracker:
         self._update_status_view() # Refresh derived stats
 
     def _create_skills_tab(self):
+        """Creates the 'Skills' tab with a Treeview for skills and EXP controls."""
         tab = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(tab, text="Skills")
 
-        tree_frame = ttk.Frame(tab)
-        tree_frame.pack(fill="both", expand=True)
+        self._create_skill_tree_view(tab)
+        self._create_skill_controls(tab)
 
+    def _create_skill_tree_view(self, parent_tab):
+        """Creates the Treeview widget for displaying skills."""
+        tree_frame = ttk.Frame(parent_tab)
+        tree_frame.pack(fill="both", expand=True)
         columns = ("#1", "#2", "#3", "#4")
         self.skill_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=12)
         self.skill_tree.heading("#1", text="Skill Name")
@@ -442,15 +460,17 @@ class CharacterTracker:
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.skill_tree.yview)
         self.skill_tree.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
-
-        btn_frame = ttk.Frame(tab)
+    
+    def _create_skill_controls(self, parent_tab):
+        """Creates buttons and EXP input for skill management."""
+        btn_frame = ttk.Frame(parent_tab)
         btn_frame.pack(pady=10, fill="x")
         
         add_skill_btn = ttk.Button(btn_frame, text="Add Skill", command=self._add_skill)
         add_skill_btn.pack(side="left", padx=10)
         self.tooltips.append(ToolTip(add_skill_btn, "Add a new skill to the list.", self.theme))
-
-        exp_frame = ttk.LabelFrame(tab, text="Add Experience to Selected Skill", padding="15")
+        
+        exp_frame = ttk.LabelFrame(parent_tab, text="Add Experience to Selected Skill", padding="15")
         exp_frame.pack(fill="x", pady=10)
         self.skill_exp_gain = tk.IntVar()
         ttk.Label(exp_frame, text="Amount:").pack(side="left", padx=5)
@@ -470,12 +490,17 @@ class CharacterTracker:
         ])
 
     def _create_inventory_tab(self):
+        """Creates the 'Inventory' tab with equipment, inventory, and item details."""
         tab = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(tab, text="Inventory")
 
-        main_pane = ttk.PanedWindow(tab, orient=tk.HORIZONTAL)
-        main_pane.pack(fill="both", expand=True)
+        self._create_inventory_panes(tab)
+        self._create_inventory_buttons(tab)
 
+    def _create_inventory_panes(self, parent_tab):
+        """Creates the paned window containing equipment and inventory treeviews."""
+        main_pane = ttk.PanedWindow(parent_tab, orient=tk.HORIZONTAL)
+        main_pane.pack(fill="both", expand=True)
         # --- Equipment Pane ---
         equip_frame = ttk.LabelFrame(main_pane, text="Equipment", padding=10)
         main_pane.add(equip_frame, weight=1)
@@ -488,7 +513,6 @@ class CharacterTracker:
         self.equip_tree.column("#2", width=150, anchor="w")
         self.equip_tree.pack(fill="both", expand=True)
         self.equip_tree.bind("<<TreeviewSelect>>", self._on_item_select)
-
         # --- Inventory Pane ---
         inv_frame = ttk.LabelFrame(main_pane, text="Inventory", padding=10)
         main_pane.add(inv_frame, weight=2)
@@ -503,13 +527,14 @@ class CharacterTracker:
         self.inv_tree.column("#3", width=50, anchor="center")
         self.inv_tree.pack(fill="both", expand=True)
         self.inv_tree.bind("<<TreeviewSelect>>", self._on_item_select)
-
         # --- Description Label ---
         self.item_desc_label = ttk.Label(inv_frame, text="Click an item to see its description.", wraplength=400, justify="left", font=Themes.FONT_ITALIC)
         self.item_desc_label.pack(pady=(10,0), fill="x")
-
+    
+    def _create_inventory_buttons(self, parent_tab):
+        """Creates buttons for adding, editing, and deleting items."""
         # --- Button Frame ---
-        btn_frame = ttk.Frame(tab)
+        btn_frame = ttk.Frame(parent_tab)
         btn_frame.pack(fill="x", pady=10)
 
         add_item_btn = ttk.Button(btn_frame, text="Add Item", command=self._add_item)
@@ -529,17 +554,21 @@ class CharacterTracker:
         ])
 
     def _create_notes_tab(self):
+        """Creates the 'Notes' tab with a text area for character notes."""
         tab = ttk.Frame(self.notebook, padding="10")
         self.notebook.add(tab, text="Notes")
         
-        text_frame = ttk.Frame(tab)
+        self._create_notes_text_area(tab)
+
+    def _create_notes_text_area(self, parent_tab):
+        """Creates the text widget for character notes."""
+        text_frame = ttk.Frame(parent_tab)
         text_frame.pack(fill="both", expand=True)
         
         self.notes_text = tk.Text(text_frame, wrap='word', relief="flat", insertbackground=self.theme["WIDGET_FG"])
         self.notes_text.bind("<<Modified>>", self._on_notes_modified)
         scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=self.notes_text.yview)
         self.notes_text.config(yscrollcommand=scrollbar.set)
-        
         self.notes_text.pack(side="left", fill="both", expand=True, padx=5, pady=5)
         scrollbar.pack(side="right", fill="y")
 
@@ -1147,4 +1176,3 @@ if __name__ == '__main__':
     root = tk.Tk()
     app = CharacterTracker(root)
     root.mainloop()
-
